@@ -96,9 +96,9 @@ def main():
     if args.comment:
         kwargs['slurm_comment'] = args.comment
     if args.account:
-        kwargs['account'] = args.account
+        kwargs['slurm_account'] = args.account
     if args.constraint:
-        kwargs['constraint'] = args.constraint
+        kwargs['slurm_constraint'] = args.constraint
 
     # If we use gres, we can't use gpus_per_node
     if args.gres:
