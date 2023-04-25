@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pydevd_pycharm
 from PIL import Image
 import torch
 import torch.nn as nn
@@ -37,6 +38,17 @@ from vision_transformer import DINOHead
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(torchvision_models.__dict__[name]))
+
+debug_port = int(os.environ.get("REMOTE_PYCHARM_DEBUG_PORT", 12034))
+if os.environ.get("REMOTE_PYCHARM_DEBUG_SESSION", False):
+    pydevd_pycharm.settrace(
+        "localhost",
+        port=debug_port,
+        stdoutToServer=True,
+        stderrToServer=True,
+        suspend=False,
+    )
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser('DINO', add_help=False)
@@ -117,8 +129,9 @@ def get_args_parser():
         Used for small local view cropping of multi-crop.""")
 
     # Misc
+    parser.add_argument('--dataset', default='ImageNet', type=str, help='Dataset to use.')
     parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
-        help='Please specify path to the ImageNet training data.')
+        help='Please specify path to the training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
     parser.add_argument('--saveckp_freq', default=20, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
@@ -142,7 +155,17 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
     )
-    dataset = datasets.ImageFolder(args.data_path, transform=transform)
+
+    if args.dataset == "ImageNet":
+        dataset = datasets.ImageFolder(args.data_path, transform=transform)
+    elif args.dataset == "CIFAR10":
+        dataset = datasets.CIFAR10(args.data_path, train=True, transform=transform, download=True)
+    elif args.dataset == "CIFAR100":
+        dataset = datasets.CIFAR100(args.data_path, train=True, transform=transform, download=True)
+    else:
+        # TODO: add support for SCARS, CUB, Herbarium and ImageNet-100
+        raise ValueError("Unknown dataset: {}".format(args.dataset))
+
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
