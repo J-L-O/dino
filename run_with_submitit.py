@@ -30,26 +30,20 @@ def parse_args():
     parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
     parser.add_argument("--timeout", default=2800, type=int, help="Duration of the job")
 
-    parser.add_argument("--partition", default="learnfair", type=str, help="Partition where to submit")
-    parser.add_argument("--use_volta32", action='store_true', help="Big models? Use this")
+    parser.add_argument("--account", default="", type=str, help="Account to use for slurm")
+    parser.add_argument("--partition", default="training", type=str, help="Partition where to submit")
+    parser.add_argument("--constraint", default="", type=str, help="Hardware constraints")
+    parser.add_argument("--gres", default="", type=str, help="gres reservation")
+    parser.add_argument("--cpus_per_task", default=10, type=int, help="Number of cpus to request on each node")
     parser.add_argument('--comment', default="", type=str,
                         help='Comment to pass to scheduler, e.g. priority message')
     return parser.parse_args()
 
 
-def get_shared_folder() -> Path:
-    user = os.getenv("USER")
-    if Path("/checkpoint/").is_dir():
-        p = Path(f"/checkpoint/{user}/experiments")
-        p.mkdir(exist_ok=True)
-        return p
-    raise RuntimeError("No shared folder available")
-
-
-def get_init_file():
+def get_init_file(output_dir: Path):
     # Init file must not exist, but it's parent dir must exist.
-    os.makedirs(str(get_shared_folder()), exist_ok=True)
-    init_file = get_shared_folder() / f"{uuid.uuid4().hex}_init"
+    os.makedirs(str(output_dir), exist_ok=True)
+    init_file = output_dir / f"{uuid.uuid4().hex}_init"
     if init_file.exists():
         os.remove(str(init_file))
     return init_file
@@ -69,7 +63,7 @@ class Trainer(object):
         import os
         import submitit
 
-        self.args.dist_url = get_init_file().as_uri()
+        self.args.dist_url = get_init_file(self.args.output_dir).as_uri()
         print("Requeuing ", self.args)
         empty_trainer = type(self)(self.args)
         return submitit.helpers.DelayedSubmission(empty_trainer)
@@ -88,27 +82,34 @@ class Trainer(object):
 
 def main():
     args = parse_args()
-    if args.output_dir == "":
-        args.output_dir = get_shared_folder() / "%j"
+
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     executor = submitit.AutoExecutor(folder=args.output_dir, slurm_max_num_timeout=30)
 
     num_gpus_per_node = args.ngpus
+    cpus_per_task = args.cpus_per_task
     nodes = args.nodes
     timeout_min = args.timeout
 
     partition = args.partition
     kwargs = {}
-    if args.use_volta32:
-        kwargs['slurm_constraint'] = 'volta32gb'
     if args.comment:
         kwargs['slurm_comment'] = args.comment
+    if args.account:
+        kwargs['account'] = args.account
+    if args.constraint:
+        kwargs['constraint'] = args.constraint
+
+    # If we use gres, we can't use gpus_per_node
+    if args.gres:
+        kwargs['slurm_gres'] = args.gres
+    else:
+        kwargs['gpus_per_node'] = num_gpus_per_node
 
     executor.update_parameters(
         mem_gb=40 * num_gpus_per_node,
-        gpus_per_node=num_gpus_per_node,
         tasks_per_node=num_gpus_per_node,  # one task per GPU
-        cpus_per_task=10,
+        cpus_per_task=cpus_per_task,
         nodes=nodes,
         timeout_min=timeout_min,  # max is 60 * 72
         # Below are cluster dependent parameters
@@ -119,7 +120,8 @@ def main():
 
     executor.update_parameters(name="dino")
 
-    args.dist_url = get_init_file().as_uri()
+    output_dir = Path(args.output_dir)
+    args.dist_url = get_init_file(output_dir).as_uri()
 
     trainer = Trainer(args)
     job = executor.submit(trainer)
