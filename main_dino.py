@@ -105,6 +105,8 @@ def get_args_parser():
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
         during which we keep the output layer fixed. Typically doing so during
         the first epoch helps training. Try increasing this value if the loss does not decrease.""")
+    parser.add_argument('--grad_from_block', default=0, type=int, help="""Only train the
+        model starting from this stage. The first layers will be frozen.""")
     parser.add_argument("--lr", default=0.0005, type=float, help="""Learning rate at the end of
         linear warmup (highest LR used during training). The learning rate is linearly scaled
         with the batch size, and specified here for a reference batch size of 256.""")
@@ -156,7 +158,7 @@ def train_dino(args):
         args.local_crops_number,
     )
 
-    if args.dataset == "ImageNet":
+    if args.dataset == "ImageNet" or args.dataset == "CUB200":
         dataset = datasets.ImageFolder(args.data_path, transform=transform)
     elif args.dataset == "CIFAR10":
         dataset = datasets.CIFAR10(args.data_path, train=True, transform=transform, download=True)
@@ -221,12 +223,12 @@ def train_dino(args):
         teacher = nn.SyncBatchNorm.convert_sync_batchnorm(teacher)
 
         # we need DDP wrapper to have synchro batch norms working...
-        teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
+        teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu], find_unused_parameters=True)
         teacher_without_ddp = teacher.module
     else:
         # teacher_without_ddp and teacher are the same thing
         teacher_without_ddp = teacher
-    student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
+    student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu], find_unused_parameters=True)
     # teacher and student start with the same weights
     teacher_without_ddp.load_state_dict(student.module.state_dict())
     # there is no backpropagation through the teacher, so no need for gradients
@@ -286,6 +288,22 @@ def train_dino(args):
         dino_loss=dino_loss,
     )
     start_epoch = to_restore["epoch"]
+
+    if args.grad_from_block > 0:
+        for param in student.parameters():
+            param.requires_grad = False
+
+        # From https://github.com/sgvaze/generalized-category-discovery/blob/main/methods/contrastive_training/contrastive_training.py
+        # ----------------------
+        # HOW MUCH OF BASE MODEL TO FINETUNE
+        # ----------------------
+        for name, param in student.named_parameters():
+            if "block" in name:
+                block_num = int(name.split(".")[3])
+                if block_num >= args.grad_from_block:
+                    param.requires_grad = True
+            elif "head" in name:
+                param.requires_grad = True
 
     start_time = time.time()
     print("Starting DINO training !")
