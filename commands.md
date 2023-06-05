@@ -15,10 +15,10 @@ CIFAR100
     --weight_decay 0.04 \
     --weight_decay_end 0.4 \
     --clip_grad 0.3 \
-    --epochs 200 \
+    --epochs 400 \
     --saveckp_freq 200 \
     --freeze_last_layer 3 \
-    --lr 0.00075 \
+    --lr 0.000125 \
     --warmup_epochs 10 \
     --min_lr 2e-6 \
     --global_crops_scale 0.25 1.0 \
@@ -40,7 +40,8 @@ CIFAR100
     --account meinel-mlai \
     --partition sorcery \
     --cpus_per_task 20 \
-    --constraint 'ARCH:PPC'
+    --constraint 'ARCH:PPC' \
+    --timeout 7200
 ```
 
 CUB
@@ -58,10 +59,10 @@ CUB
     --weight_decay 0.04 \
     --weight_decay_end 0.4 \
     --clip_grad 0.3 \
-    --epochs 200 \
+    --epochs 400 \
     --saveckp_freq 200 \
     --freeze_last_layer 3 \
-    --lr 0.00075 \
+    --lr 0.000125 \
     --warmup_epochs 10 \
     --min_lr 2e-6 \
     --global_crops_scale 0.25 1.0 \
@@ -83,5 +84,6 @@ CUB
     --account meinel-mlai \
     --partition sorcery \
     --cpus_per_task 20 \
-    --constraint 'ARCH:PPC'
+    --constraint 'ARCH:PPC' \
+    --timeout 3600
 ```
