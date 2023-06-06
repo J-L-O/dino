@@ -31,6 +31,7 @@ import torch
 from torch import nn
 import torch.distributed as dist
 from PIL import ImageFilter, ImageOps
+from torch.nn.parallel.distributed import DistributedDataParallel
 
 
 class GaussianBlur(object):
@@ -166,6 +167,22 @@ def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
     for key, value in kwargs.items():
         if key in checkpoint and value is not None:
             try:
+                # Catch misaligned keys from pretrained models
+                if isinstance(value, DistributedDataParallel):
+                    value_has_weight_norm = "module.head.last_layer.weight_g" in value.state_dict().keys()
+                    checkpoint_has_weight_norm = "module.head.last_layer.weight_g" in checkpoint[key].keys()
+
+                    if value_has_weight_norm and not checkpoint_has_weight_norm:
+                        checkpoint[key]["module.head.last_layer.weight_v"] = checkpoint[key]["module.head.last_layer.weight"]
+                        del checkpoint[key]["module.head.last_layer.weight"]
+                elif isinstance(value, MultiCropWrapper):
+                    value_has_weight_norm = "head.last_layer.weight_g" in value.state_dict().keys()
+                    checkpoint_has_weight_norm = "head.last_layer.weight_g" in checkpoint[key].keys()
+
+                    if value_has_weight_norm and not checkpoint_has_weight_norm:
+                        checkpoint[key]["head.last_layer.weight_v"] = checkpoint[key]["head.last_layer.weight"]
+                        del checkpoint[key]["head.last_layer.weight"]
+
                 msg = value.load_state_dict(checkpoint[key], strict=False)
                 print("=> loaded '{}' from checkpoint '{}' with msg {}".format(key, ckp_path, msg))
             except TypeError:
