@@ -16,7 +16,7 @@ CIFAR100
     --weight_decay_end 0.4 \
     --clip_grad 0.3 \
     --epochs 400 \
-    --saveckp_freq 200 \
+    --saveckp_freq 400 \
     --freeze_last_layer 3 \
     --lr 0.000125 \
     --warmup_epochs 10 \
@@ -60,7 +60,7 @@ CUB
     --weight_decay_end 0.4 \
     --clip_grad 0.3 \
     --epochs 400 \
-    --saveckp_freq 200 \
+    --saveckp_freq 400 \
     --freeze_last_layer 3 \
     --lr 0.000125 \
     --warmup_epochs 10 \
